@@ -219,6 +219,16 @@ const MasterDashboard = () => {
           <p className="text-gray-300">Your holistic life overview</p>
         </div>
 
+{/* Back to Brain Dump Link */}
+<div className="mb-6 text-center">
+  <a 
+    href="/" 
+    className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 rounded-lg transition-all duration-200 text-white font-medium"
+  >
+    🧠 New Brain Dump
+  </a>
+</div>
+
         {/* Cosmic Context Bar */}
         <div className="bg-white/10 backdrop-blur-lg rounded-xl p-4 mb-8 border border-white/20">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
