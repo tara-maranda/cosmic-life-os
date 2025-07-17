@@ -6,9 +6,8 @@ import {
   Trash2, Plus, Settings, Database, BarChart3
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { getCosmicData } from '../lib/cosmicApi';
 
-export default function EnhancedBrainDump() {
+export default function BrainDump() {
   // State management
   const [dumpText, setDumpText] = useState('');
   const [dumps, setDumps] = useState([]);
@@ -20,6 +19,7 @@ export default function EnhancedBrainDump() {
   const [cosmicData, setCosmicData] = useState(null);
   const [cycleData, setCycleData] = useState({ day: 14, phase: 'ovulatory' });
   const [databases, setDatabases] = useState([]);
+  const [showChat, setShowChat] = useState(false);
   
   const textareaRef = useRef(null);
   const chatEndRef = useRef(null);
@@ -62,18 +62,28 @@ export default function EnhancedBrainDump() {
 
   const loadCosmicData = async () => {
     try {
-      const cosmic = await getCosmicData();
-      setCosmicData(cosmic);
+      const response = await fetch('/api/cosmic');
+      if (response.ok) {
+        const cosmic = await response.json();
+        setCosmicData(cosmic);
+      }
     } catch (error) {
       console.error('Error loading cosmic data:', error);
+      // Set fallback data
+      setCosmicData({
+        moonPhase: 'Loading...',
+        currentSign: 'Loading...'
+      });
     }
   };
 
   const loadCycleData = async () => {
     try {
       const response = await fetch('/api/cycle');
-      const data = await response.json();
-      setCycleData(data);
+      if (response.ok) {
+        const data = await response.json();
+        setCycleData(data);
+      }
     } catch (error) {
       console.error('Error loading cycle data:', error);
     }
@@ -82,8 +92,10 @@ export default function EnhancedBrainDump() {
   const loadDatabases = async () => {
     try {
       const response = await fetch('/api/databases');
-      const data = await response.json();
-      setDatabases(data.databases || []);
+      if (response.ok) {
+        const data = await response.json();
+        setDatabases(data.databases || []);
+      }
     } catch (error) {
       console.error('Error loading databases:', error);
     }
@@ -143,6 +155,7 @@ export default function EnhancedBrainDump() {
     const newHistory = [...chatHistory, userMessage];
     setChatHistory(newHistory);
     setDumpText('');
+    setShowChat(true);
 
     try {
       const response = await fetch('/api/chat', {
@@ -213,8 +226,10 @@ export default function EnhancedBrainDump() {
         body: JSON.stringify({ cycleDay: day })
       });
       
-      const data = await response.json();
-      setCycleData(data);
+      if (response.ok) {
+        const data = await response.json();
+        setCycleData(data);
+      }
     } catch (error) {
       console.error('Error updating cycle:', error);
     }
@@ -248,6 +263,7 @@ export default function EnhancedBrainDump() {
     ];
     setChatHistory(initialChat);
     setChatSessions({ ...chatSessions, [dump.id]: initialChat });
+    setShowChat(true);
   };
 
   const categorizeDump = (text) => {
@@ -425,4 +441,107 @@ export default function EnhancedBrainDump() {
                   return (
                     <div
                       key={dump.id}
-                      className={`bg-white/5 rounded-lg p-3 hover:bg-white/10 transition-all duration-200 cursor-pointer ${
+                      className="bg-white/5 rounded-lg p-3 hover:bg-white/10 transition-all duration-200 cursor-pointer"
+                      onClick={() => startChatForDump(dump)}
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <div className={`flex items-center gap-2 px-2 py-1 rounded-full text-xs bg-${color}-500/20 text-${color}-300`}>
+                          <IconComponent className="w-3 h-3" />
+                          {dump.category}
+                        </div>
+                        <span className="text-xs text-gray-400">
+                          {new Date(dump.created_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                      
+                      <p className="text-gray-300 text-sm">{dump.content}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column: Chat Interface */}
+          <div className="space-y-6">
+            
+            {/* Chat Area */}
+            {showChat && (
+              <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                  <MessageCircle className="w-5 h-5" />
+                  AI Conversation
+                </h3>
+                
+                <div className="space-y-4 max-h-96 overflow-y-auto mb-4">
+                  {chatHistory.map((message, index) => (
+                    <div
+                      key={index}
+                      className={`p-3 rounded-lg ${
+                        message.role === 'user' 
+                          ? 'bg-blue-500/20 ml-4' 
+                          : 'bg-purple-500/20 mr-4'
+                      }`}
+                    >
+                      <p className="text-sm text-gray-400 mb-1">
+                        {message.role === 'user' ? 'You' : 'AI Assistant'}
+                      </p>
+                      <p className="text-gray-100">{message.content}</p>
+                    </div>
+                  ))}
+                  <div ref={chatEndRef} />
+                </div>
+                
+                {/* Chat Input */}
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={dumpText}
+                    onChange={(e) => setDumpText(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleSubmit(true)}
+                    placeholder="Continue the conversation..."
+                    className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400"
+                  />
+                  <button
+                    onClick={() => handleSubmit(true)}
+                    disabled={!dumpText.trim() || isLoading}
+                    className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 disabled:opacity-50 py-2 px-4 rounded-lg transition-all duration-200"
+                  >
+                    <Send className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Databases */}
+            <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <Database className="w-5 h-5" />
+                Your Databases
+              </h3>
+              
+              <div className="space-y-2">
+                {databases.map((db) => (
+                  <div key={db.id} className="flex items-center justify-between bg-white/5 rounded-lg p-3">
+                    <div>
+                      <p className="font-medium">{db.name}</p>
+                      <p className="text-sm text-gray-400">{db.itemCount} items</p>
+                    </div>
+                    <button className="text-purple-400 hover:text-purple-300">
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+                
+                <button className="w-full flex items-center justify-center gap-2 p-3 border-2 border-dashed border-gray-600 hover:border-gray-500 rounded-lg transition-all duration-200">
+                  <Plus className="w-4 h-4" />
+                  Ask AI to create a new database
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
