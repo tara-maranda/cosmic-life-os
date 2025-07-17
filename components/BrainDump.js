@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Brain, Sparkles, Mic, MicOff, Save, Trash2, Tag, Calendar, Target, Home, Leaf, Heart, Book, DollarSign, Users, Camera, Lightbulb, ArrowRight, MessageCircle } from 'lucide-react'
+import { Brain, Sparkles, Mic, MicOff, Save, Trash2, Tag, Calendar, Target, Home, Leaf, Heart, Book, DollarSign, Users, Camera, Lightbulb, ArrowRight, MessageCircle, Plus, Clock, CheckCircle } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
 export default function BrainDump() {
@@ -9,8 +9,11 @@ export default function BrainDump() {
   const [selectedDump, setSelectedDump] = useState(null)
   const [showAIChat, setShowAIChat] = useState(false)
   const [aiResponse, setAiResponse] = useState('')
+  const [suggestions, setSuggestions] = useState([])
   const [isProcessing, setIsProcessing] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [chatHistory, setChatHistory] = useState([])
+  const [followUpMessage, setFollowUpMessage] = useState('')
   const textareaRef = useRef(null)
 
   // Load dumps from database on component mount
@@ -38,22 +41,21 @@ export default function BrainDump() {
       setDumps(data || [])
     } catch (error) {
       console.error('Error loading dumps:', error)
-      // Don't show error to user, just log it
     }
   }
 
   const categorizeDump = (text) => {
     const categories = {
-      goals: ['goal', 'want to', 'need to', 'should', 'career', 'transition', 'house'],
-      tasks: ['todo', 'need to do', 'remember', 'call', 'buy', 'fix', 'schedule'],
-      garden: ['plant', 'garden', 'harvest', 'seeds', 'water', 'herbs', 'vegetables'],
-      spiritual: ['tarot', 'meditation', 'insight', 'dream', 'feeling', 'intuition', 'energy'],
-      health: ['cycle', 'pcos', 'pmdd', 'weight', 'exercise', 'vitamins', 'mood'],
-      home: ['house', 'room', 'clean', 'organize', 'ceiling fan', 'project'],
-      finance: ['money', 'budget', 'invest', 'save', 'spending', 'bills'],
-      relationships: ['friend', 'family', 'birthday', 'call', 'text', 'visit'],
-      learning: ['course', 'book', 'study', 'learn', 'research', 'video'],
-      random: ['idea', 'thought', 'random', 'brain dump', 'note']
+      goals: ['goal', 'want to', 'need to', 'should', 'career', 'transition', 'house', 'future', 'plan', 'achieve'],
+      tasks: ['todo', 'need to do', 'remember', 'call', 'buy', 'fix', 'schedule', 'appointment', 'email', 'order'],
+      garden: ['plant', 'garden', 'harvest', 'seeds', 'water', 'herbs', 'vegetables', 'grow', 'soil', 'compost'],
+      spiritual: ['tarot', 'meditation', 'insight', 'dream', 'feeling', 'intuition', 'energy', 'spiritual', 'moon', 'astrology'],
+      health: ['cycle', 'pcos', 'pmdd', 'weight', 'exercise', 'vitamins', 'mood', 'body', 'tired', 'energy'],
+      home: ['house', 'room', 'clean', 'organize', 'ceiling fan', 'project', 'repair', 'decorate', 'kitchen'],
+      finance: ['money', 'budget', 'invest', 'save', 'spending', 'bills', 'income', 'expense', 'financial'],
+      relationships: ['friend', 'family', 'birthday', 'call', 'text', 'visit', 'love', 'partner', 'social'],
+      learning: ['course', 'book', 'study', 'learn', 'research', 'video', 'skill', 'knowledge', 'read'],
+      random: ['idea', 'thought', 'random', 'brain dump', 'note', 'wonder', 'curious']
     }
 
     const textLower = text.toLowerCase()
@@ -117,7 +119,6 @@ export default function BrainDump() {
 
       if (error) throw error
       
-      // Add to local state
       setDumps([data[0], ...dumps])
       setDumpText('')
     } catch (error) {
@@ -128,29 +129,80 @@ export default function BrainDump() {
     }
   }
 
-  const mockAIProcess = (dump) => {
+  const processWithAI = async (dump) => {
     setIsProcessing(true)
     setSelectedDump(dump)
     setShowAIChat(true)
+    setChatHistory([])
+    setSuggestions([])
     
-    // Mock AI processing
-    setTimeout(() => {
-      const responses = {
-        goals: "I can see this relates to your career transition goals! Let me break this down into actionable steps and add them to your goal roadmap. Should we also schedule some time blocks for working on this?",
-        tasks: "Perfect! I've categorized this as a task. Based on your energy patterns, would you like me to schedule this for a high-energy time? Also, I can set a gentle reminder so your ADHD brain doesn't forget.",
-        garden: "Love this garden insight! I can add this to your garden database and check if it aligns with the current moon phase for optimal timing. Should I also suggest any related rituals or recipes?",
-        spiritual: "This feels like an important spiritual download! I can save this to your spiritual insights database and cross-reference it with your current Human Design transits. Want to explore this deeper?",
-        health: "This connects to your PCOS/PMDD tracking. Let me check where you are in your cycle and suggest some cycle-synced support. I can also add any relevant herbs or supplements to consider.",
-        home: "Ah, another house project! I notice you've been putting off that ceiling fan for 8 months. Should I prioritize this and add it to this week's time blocks? I can help break it into smaller, less overwhelming steps.",
-        finance: "This relates to your financial goals! Let me analyze this against your money roadmap and suggest how this fits into your budget. I can also remind you of your bigger financial goals.",
-        relationships: "This is about relationships! I can add this to your relationship database and set reminders for important dates or check-ins. Want me to suggest some thoughtful ways to connect?",
-        learning: "Adding this to your learning queue! I can integrate this with your spiritual studies and suggest the best timing based on your cycle and energy levels. Should I schedule study time?",
-        random: "I love these random thoughts - they often lead to the best insights! Let me save this and see if it connects to any patterns in your journals or other brain dumps."
-      }
+    try {
+      const response = await fetch('/api/process-dump', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          content: dump.content,
+          category: dump.category,
+          userContext: {
+            recentDumps: dumps.slice(0, 5).map(d => ({ content: d.content, category: d.category }))
+          }
+        })
+      })
+
+      const data = await response.json()
       
-      setAiResponse(responses[dump.category] || responses.random)
+      if (response.ok) {
+        setAiResponse(data.response)
+        setSuggestions(data.suggestions || [])
+        setChatHistory([
+          { role: 'user', content: dump.content },
+          { role: 'assistant', content: data.response }
+        ])
+      } else {
+        setAiResponse(data.fallback || "I'm having trouble processing this right now, but I can see it's important to you. Let's save it and come back to it later!")
+      }
+    } catch (error) {
+      console.error('Error processing with AI:', error)
+      setAiResponse("I'm having some technical difficulties, but your thought is captured safely. Let's explore this together once I'm back online!")
+    } finally {
       setIsProcessing(false)
-    }, 2000)
+    }
+  }
+
+  const sendFollowUp = async () => {
+    if (!followUpMessage.trim()) return
+    
+    const userMessage = { role: 'user', content: followUpMessage }
+    setChatHistory([...chatHistory, userMessage])
+    setFollowUpMessage('')
+    setIsProcessing(true)
+    
+    try {
+      const response = await fetch('/api/chat-followup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: followUpMessage,
+          history: chatHistory,
+          originalDump: selectedDump
+        })
+      })
+
+      const data = await response.json()
+      
+      if (response.ok) {
+        const assistantMessage = { role: 'assistant', content: data.response }
+        setChatHistory(prev => [...prev, assistantMessage])
+      }
+    } catch (error) {
+      console.error('Error in follow-up:', error)
+    } finally {
+      setIsProcessing(false)
+    }
   }
 
   const deleteDump = async (id) => {
@@ -166,6 +218,23 @@ export default function BrainDump() {
     } catch (error) {
       console.error('Error deleting dump:', error)
       alert('Error deleting dump. Please try again.')
+    }
+  }
+
+  const markAsProcessed = async (id) => {
+    try {
+      const { error } = await supabase
+        .from('brain_dumps')
+        .update({ processed: true })
+        .eq('id', id)
+
+      if (error) throw error
+      
+      setDumps(dumps.map(dump => 
+        dump.id === id ? { ...dump, processed: true } : dump
+      ))
+    } catch (error) {
+      console.error('Error updating dump:', error)
     }
   }
 
@@ -188,7 +257,7 @@ export default function BrainDump() {
           <Brain className="w-8 h-8 text-purple-400" />
           Brain Dump
         </h1>
-        <p className="text-gray-300">Your ADHD-friendly thought capture system</p>
+        <p className="text-gray-300">Your AI-powered ADHD-friendly thought capture system</p>
       </div>
 
       {/* Quick Templates */}
@@ -272,12 +341,22 @@ export default function BrainDump() {
               return (
                 <div
                   key={dump.id}
-                  className="bg-white/5 rounded-lg p-4 hover:bg-white/10 transition-all duration-200"
+                  className={`bg-white/5 rounded-lg p-4 hover:bg-white/10 transition-all duration-200 ${
+                    dump.processed ? 'border-l-4 border-green-500' : ''
+                  }`}
                 >
                   <div className="flex items-start justify-between mb-2">
-                    <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs border ${getCategoryColor(dump.category)}`}>
-                      <IconComponent className="w-3 h-3" />
-                      {dump.category}
+                    <div className="flex items-center gap-3">
+                      <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs border ${getCategoryColor(dump.category)}`}>
+                        <IconComponent className="w-3 h-3" />
+                        {dump.category}
+                      </div>
+                      {dump.processed && (
+                        <div className="flex items-center gap-1 text-green-400 text-xs">
+                          <CheckCircle className="w-3 h-3" />
+                          Processed
+                        </div>
+                      )}
                     </div>
                     <span className="text-xs text-gray-400">
                       {new Date(dump.created_at).toLocaleDateString()}
@@ -286,13 +365,21 @@ export default function BrainDump() {
                   
                   <p className="text-gray-300 mb-3">{dump.content}</p>
                   
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 flex-wrap">
                     <button 
-                      onClick={() => mockAIProcess(dump)}
+                      onClick={() => processWithAI(dump)}
                       className="flex items-center gap-2 px-3 py-1 bg-gradient-to-r from-purple-500/50 to-pink-500/50 hover:from-purple-500/70 hover:to-pink-500/70 rounded-lg text-sm transition-all duration-200"
                     >
                       <MessageCircle className="w-3 h-3" />
-                      Ask AI to Process
+                      AI Process
+                    </button>
+                    
+                    <button 
+                      onClick={() => markAsProcessed(dump.id)}
+                      className="flex items-center gap-2 px-3 py-1 bg-green-500/20 hover:bg-green-500/30 rounded-lg text-sm transition-all duration-200"
+                    >
+                      <CheckCircle className="w-3 h-3" />
+                      Mark Done
                     </button>
                     
                     <button className="flex items-center gap-2 px-3 py-1 bg-white/20 hover:bg-white/30 rounded-lg text-sm transition-all duration-200">
@@ -315,10 +402,10 @@ export default function BrainDump() {
         </div>
       )}
 
-      {/* AI Chat Modal */}
+      {/* Enhanced AI Chat Modal */}
       {showAIChat && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-900 rounded-xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto border border-purple-500/30">
+          <div className="bg-gray-900 rounded-xl p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto border border-purple-500/30">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-semibold flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-purple-400" />
@@ -335,30 +422,74 @@ export default function BrainDump() {
             <div className="bg-white/5 rounded-lg p-4 mb-4">
               <p className="text-sm text-gray-400 mb-2">Original dump:</p>
               <p className="text-gray-300">{selectedDump?.content}</p>
+              <div className={`inline-flex items-center gap-2 px-2 py-1 rounded-full text-xs mt-2 ${getCategoryColor(selectedDump?.category)}`}>
+                {React.createElement(getCategoryIcon(selectedDump?.category), { className: "w-3 h-3" })}
+                {selectedDump?.category}
+              </div>
             </div>
             
-            <div className="bg-purple-500/10 rounded-lg p-4">
-              <p className="text-sm text-purple-400 mb-2">AI Response:</p>
-              {isProcessing ? (
-                <div className="flex items-center gap-2 text-gray-400">
-                  <div className="animate-spin w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full"></div>
-                  Processing your thoughts...
+            <div className="space-y-4 mb-4">
+              {chatHistory.map((message, index) => (
+                <div
+                  key={index}
+                  className={`p-4 rounded-lg ${
+                    message.role === 'user' 
+                      ? 'bg-blue-500/10 ml-8' 
+                      : 'bg-purple-500/10 mr-8'
+                  }`}
+                >
+                  <p className="text-sm text-gray-400 mb-1">
+                    {message.role === 'user' ? 'You' : 'AI Assistant'}
+                  </p>
+                  <p className="text-gray-300">{message.content}</p>
                 </div>
-              ) : (
-                <p className="text-gray-300">{aiResponse}</p>
+              ))}
+              
+              {isProcessing && (
+                <div className="bg-purple-500/10 mr-8 p-4 rounded-lg">
+                  <div className="flex items-center gap-2 text-gray-400">
+                    <div className="animate-spin w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full"></div>
+                    Processing your thoughts...
+                  </div>
+                </div>
               )}
             </div>
-            
-            {!isProcessing && (
-              <div className="flex gap-3 mt-4">
-                <button className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 py-2 px-4 rounded-lg transition-all duration-200">
-                  Apply Suggestions
-                </button>
-                <button className="flex-1 bg-white/20 hover:bg-white/30 py-2 px-4 rounded-lg transition-all duration-200">
-                  Continue Chat
-                </button>
+
+            {/* Suggestions */}
+            {suggestions.length > 0 && (
+              <div className="bg-yellow-500/10 rounded-lg p-4 mb-4">
+                <p className="text-sm text-yellow-400 mb-2">Quick Actions:</p>
+                <div className="flex flex-wrap gap-2">
+                  {suggestions.map((suggestion, index) => (
+                    <button
+                      key={index}
+                      className="px-3 py-1 bg-yellow-500/20 hover:bg-yellow-500/30 rounded-full text-xs transition-all duration-200"
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
+            
+            {/* Follow-up input */}
+            <div className="flex gap-3">
+              <input
+                type="text"
+                value={followUpMessage}
+                onChange={(e) => setFollowUpMessage(e.target.value)}
+                placeholder="Ask a follow-up question..."
+                className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400"
+                onKeyPress={(e) => e.key === 'Enter' && sendFollowUp()}
+              />
+              <button
+                onClick={sendFollowUp}
+                disabled={!followUpMessage.trim() || isProcessing}
+                className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 disabled:opacity-50 py-2 px-4 rounded-lg transition-all duration-200"
+              >
+                Send
+              </button>
+            </div>
           </div>
         </div>
       )}
