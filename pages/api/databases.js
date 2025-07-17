@@ -1,19 +1,19 @@
+import { supabase } from '../../lib/supabase';
+
 export default async function handler(req, res) {
   if (req.method === 'POST') {
     const { name, type = 'custom', fields = [] } = req.body;
     
     try {
-      // Create new database table
-      const defaultFields = getDefaultFields(type);
+      console.log('Creating database:', { name, type });
       
-      // In production, this would create actual database tables
+      // For now, return success (in production, you'd create actual tables)
       const newDatabase = {
         id: Date.now(),
         name: name,
         type: type,
-        fields: [...defaultFields, ...fields],
-        created: new Date().toISOString(),
-        itemCount: 0
+        itemCount: 0,
+        created: new Date().toISOString()
       };
 
       res.status(200).json({
@@ -22,10 +22,11 @@ export default async function handler(req, res) {
         message: `${name} database created successfully!`
       });
     } catch (error) {
+      console.error('Error creating database:', error);
       res.status(500).json({ error: 'Failed to create database' });
     }
   } else if (req.method === 'GET') {
-    // Return all databases
+    // Return mock databases for now
     const mockDatabases = [
       {
         id: 1,
@@ -44,41 +45,7 @@ export default async function handler(req, res) {
     ];
     
     res.status(200).json({ databases: mockDatabases });
+  } else {
+    res.status(405).json({ message: 'Method not allowed' });
   }
-}
-
-function getDefaultFields(type) {
-  const fieldTemplates = {
-    crystal: [
-      { name: 'name', type: 'text', required: true },
-      { name: 'color', type: 'text' },
-      { name: 'properties', type: 'textarea' },
-      { name: 'uses', type: 'textarea' },
-      { name: 'chakra', type: 'select', options: ['Root', 'Sacral', 'Solar Plexus', 'Heart', 'Throat', 'Third Eye', 'Crown'] },
-      { name: 'moon_phase', type: 'text' },
-      { name: 'rituals', type: 'textarea' }
-    ],
-    herb: [
-      { name: 'name', type: 'text', required: true },
-      { name: 'scientific_name', type: 'text' },
-      { name: 'medicinal_uses', type: 'textarea' },
-      { name: 'recipes', type: 'textarea' },
-      { name: 'harvest_time', type: 'text' },
-      { name: 'growing_notes', type: 'textarea' }
-    ],
-    goals: [
-      { name: 'title', type: 'text', required: true },
-      { name: 'description', type: 'textarea' },
-      { name: 'target_date', type: 'date' },
-      { name: 'status', type: 'select', options: ['Planning', 'In Progress', 'Completed', 'On Hold'] },
-      { name: 'next_actions', type: 'textarea' }
-    ],
-    custom: [
-      { name: 'title', type: 'text', required: true },
-      { name: 'description', type: 'textarea' },
-      { name: 'tags', type: 'text' }
-    ]
-  };
-  
-  return fieldTemplates[type] || fieldTemplates.custom;
 }
