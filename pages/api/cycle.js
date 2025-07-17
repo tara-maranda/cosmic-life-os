@@ -1,27 +1,36 @@
+import { supabase } from '../../lib/supabase';
+
 export default async function handler(req, res) {
   if (req.method === 'POST') {
     const { cycleDay, cyclePhase } = req.body;
     
     try {
-      // In a real app, save to database
-      // For now, return the updated data
       const phase = cyclePhase || calculateCyclePhase(cycleDay);
       
-      res.status(200).json({
-        cycleDay: cycleDay,
-        cyclePhase: phase,
+      // Try to update in database (you could store user cycle data)
+      // For now, just return the updated data
+      const cycleData = {
+        day: cycleDay,
+        phase: phase,
         updated: new Date().toISOString()
-      });
+      };
+      
+      console.log('Updated cycle data:', cycleData);
+      
+      res.status(200).json(cycleData);
     } catch (error) {
+      console.error('Error updating cycle:', error);
       res.status(500).json({ error: 'Failed to update cycle data' });
     }
   } else if (req.method === 'GET') {
     // Return current cycle data
     res.status(200).json({
-      cycleDay: 14,
-      cyclePhase: 'ovulatory',
+      day: 14,
+      phase: 'ovulatory',
       lastUpdated: new Date().toISOString()
     });
+  } else {
+    res.status(405).json({ message: 'Method not allowed' });
   }
 }
 
