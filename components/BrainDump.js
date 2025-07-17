@@ -260,6 +260,16 @@ export default function BrainDump() {
   <p className="text-gray-300">Your ADHD-friendly thought capture system</p>
 </div>
 
+  {/* Dashboard Link */}
+<div className="mb-6 text-center">
+  <a 
+    href="/dashboard" 
+    className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 rounded-lg transition-all duration-200 text-white font-medium"
+  >
+    📊 View Dashboard
+  </a>
+</div>
+
       {/* Main Input Area */}
       <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 mb-6 border border-white/20">
         <div className="flex items-center gap-3 mb-4">
