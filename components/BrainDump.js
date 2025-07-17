@@ -88,34 +88,31 @@ export default function BrainDump() {
   };
 
   const loadDatabases = async () => {
+    // Load from localStorage first (most reliable)
+    const saved = localStorage.getItem('cosmic-databases');
+    if (saved) {
+      setDatabases(JSON.parse(saved));
+      return;
+    }
+    
+    // Fallback to API if no localStorage data
     try {
-      // First try to load from API
       const response = await fetch('/api/databases');
       if (response.ok) {
         const data = await response.json();
         setDatabases(data.databases || []);
-      } else {
-        // Fallback to localStorage for persistence
-        const saved = localStorage.getItem('cosmic-databases');
-        if (saved) {
-          setDatabases(JSON.parse(saved));
-        } else {
-          // Default databases
-          const defaultDbs = [
-            { id: 1, name: 'Goals', type: 'goals', itemCount: 5, created: new Date().toISOString() },
-            { id: 2, name: 'Garden', type: 'garden', itemCount: 0, created: new Date().toISOString() }
-          ];
-          setDatabases(defaultDbs);
-          localStorage.setItem('cosmic-databases', JSON.stringify(defaultDbs));
-        }
+        // Save to localStorage for future
+        localStorage.setItem('cosmic-databases', JSON.stringify(data.databases || []));
       }
     } catch (error) {
       console.error('Error loading databases:', error);
-      // Load from localStorage as fallback
-      const saved = localStorage.getItem('cosmic-databases');
-      if (saved) {
-        setDatabases(JSON.parse(saved));
-      }
+      // Set default if everything fails
+      const defaultDbs = [
+        { id: 1, name: 'Goals', type: 'goals', itemCount: 5, created: new Date().toISOString() },
+        { id: 2, name: 'Garden', type: 'garden', itemCount: 0, created: new Date().toISOString() }
+      ];
+      setDatabases(defaultDbs);
+      localStorage.setItem('cosmic-databases', JSON.stringify(defaultDbs));
     }
   };
 
@@ -234,9 +231,12 @@ export default function BrainDump() {
   };
 
   const processActionsAndUpdateState = async (actions) => {
+    console.log('Processing actions:', actions);
+    
     for (const action of actions) {
       switch (action.type) {
         case 'update_cycle':
+          console.log('Updating cycle to day:', action.value);
           const newCycleData = {
             day: action.value,
             phase: calculateCyclePhase(action.value),
@@ -244,11 +244,13 @@ export default function BrainDump() {
           };
           setCycleData(newCycleData);
           
-          // Save to localStorage for persistence
+          // Save to localStorage for persistence across page refreshes
           localStorage.setItem('cosmic-cycle', JSON.stringify(newCycleData));
+          console.log('Saved cycle data to localStorage:', newCycleData);
           break;
           
         case 'create_database':
+          console.log('Creating database:', action.name);
           const newDatabase = {
             id: Date.now(),
             name: action.name.charAt(0).toUpperCase() + action.name.slice(1),
@@ -256,9 +258,14 @@ export default function BrainDump() {
             itemCount: 0,
             created: new Date().toISOString()
           };
+          
+          // Update state
           const updatedDatabases = [...databases, newDatabase];
           setDatabases(updatedDatabases);
-          saveDatabasesLocally(updatedDatabases);
+          
+          // Save to localStorage for persistence
+          localStorage.setItem('cosmic-databases', JSON.stringify(updatedDatabases));
+          console.log('Saved databases to localStorage:', updatedDatabases);
           break;
       }
     }
@@ -288,18 +295,61 @@ export default function BrainDump() {
     }
   };
 
-  const startNewChat = () => {
+  const startNewChat = async () => {
     if (!dumpText.trim()) return;
     
     setActiveChatId('new');
     setShowChat(true);
+    setIsLoading(true);
     
-    const initialChat = [
-      { role: 'user', content: dumpText, timestamp: new Date().toISOString() }
-    ];
-    setChatHistory(initialChat);
-    setChatText(dumpText); // Pre-fill chat input
-    setDumpText(''); // Clear main input
+    const userMessage = { role: 'user', content: dumpText, timestamp: new Date().toISOString() };
+    setChatHistory([userMessage]);
+    
+    const inputText = dumpText;
+    setDumpText(''); // Clear main input immediately
+    
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: inputText,
+          chatType: 'general',
+          chatHistory: [userMessage],
+          userContext: { cosmicData, cycleData, recentDumps: dumps.slice(0, 3) }
+        })
+      });
+
+      const data = await response.json();
+      
+      if (response.ok) {
+        const aiMessage = { 
+          role: 'assistant', 
+          content: data.response, 
+          timestamp: new Date().toISOString(),
+          actions: data.actions || []
+        };
+        
+        setChatHistory([userMessage, aiMessage]);
+        
+        // Process actions immediately
+        if (data.actions && data.actions.length > 0) {
+          await processActionsAndUpdateState(data.actions);
+        }
+      } else {
+        throw new Error(data.error || 'Chat failed');
+      }
+    } catch (error) {
+      console.error('Error in chat:', error);
+      const errorMessage = { 
+        role: 'assistant', 
+        content: "I'm having some trouble connecting right now, but I'm still here with you. Try asking again in a moment!",
+        timestamp: new Date().toISOString() 
+      };
+      setChatHistory([userMessage, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const categorizeDump = (text) => {
@@ -353,11 +403,30 @@ export default function BrainDump() {
     return colors[phase] || 'bg-gray-500/20 text-gray-300';
   };
 
-  // Load cycle data from localStorage on component mount
+  // Load cycle and database data from localStorage on component mount
   useEffect(() => {
+    // Load saved cycle data
     const savedCycle = localStorage.getItem('cosmic-cycle');
     if (savedCycle) {
-      setCycleData(JSON.parse(savedCycle));
+      const cycleData = JSON.parse(savedCycle);
+      setCycleData(cycleData);
+      console.log('Loaded cycle data from localStorage:', cycleData);
+    }
+    
+    // Load saved databases
+    const savedDatabases = localStorage.getItem('cosmic-databases');
+    if (savedDatabases) {
+      const dbData = JSON.parse(savedDatabases);
+      setDatabases(dbData);
+      console.log('Loaded databases from localStorage:', dbData);
+    } else {
+      // Set default databases if none exist
+      const defaultDbs = [
+        { id: 1, name: 'Goals', type: 'goals', itemCount: 5, created: new Date().toISOString() },
+        { id: 2, name: 'Garden', type: 'garden', itemCount: 0, created: new Date().toISOString() }
+      ];
+      setDatabases(defaultDbs);
+      localStorage.setItem('cosmic-databases', JSON.stringify(defaultDbs));
     }
   }, []);
 
