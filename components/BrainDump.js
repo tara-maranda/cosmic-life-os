@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Brain, Sparkles, Mic, MicOff, Save, Trash2, Tag, Calendar, Target, Home, Leaf, Heart, Book, DollarSign, Users, Camera, Lightbulb, ArrowRight, MessageCircle, Plus, Clock, CheckCircle } from 'lucide-react'
+import { Brain, Sparkles, Mic, MicOff, Save, Trash2, Tag, Calendar, Target, Home, Leaf, Heart, Book, DollarSign, Users, Camera, Lightbulb, ArrowRight, MessageCircle, Plus, Clock, CheckCircle, BarChart3 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
 export default function BrainDump() {
