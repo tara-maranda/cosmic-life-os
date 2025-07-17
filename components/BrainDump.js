@@ -252,29 +252,13 @@ export default function BrainDump() {
   return (
     <div className="container mx-auto px-4 py-8 max-w-4xl text-white">
       {/* Header */}
-      <div className="text-center mb-8">
-        <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-pink-400 via-purple-400 to-indigo-400 bg-clip-text text-transparent flex items-center justify-center gap-3">
-          <Brain className="w-8 h-8 text-purple-400" />
-          Brain Dump
-        </h1>
-        <p className="text-gray-300">Your AI-powered ADHD-friendly thought capture system</p>
-      </div>
-
-      {/* Quick Templates */}
-      <div className="mb-6">
-        <p className="text-sm text-gray-400 mb-3">Quick starters:</p>
-        <div className="flex flex-wrap gap-2">
-          {quickDumpTemplates.map((template, index) => (
-            <button
-              key={index}
-              onClick={() => setDumpText(template)}
-              className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded-full text-xs transition-all duration-200"
-            >
-              {template}
-            </button>
-          ))}
-        </div>
-      </div>
+<div className="text-center mb-8">
+  <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-pink-400 via-purple-400 to-indigo-400 bg-clip-text text-transparent flex items-center justify-center gap-3">
+    <Brain className="w-8 h-8 text-purple-400" />
+    Brain Dump
+  </h1>
+  <p className="text-gray-300">Your ADHD-friendly thought capture system</p>
+</div>
 
       {/* Main Input Area */}
       <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 mb-6 border border-white/20">
