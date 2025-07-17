@@ -16,9 +16,15 @@ export default function BrainDump() {
   const [chatSessions, setChatSessions] = useState({});
   const [currentChatType, setCurrentChatType] = useState('general');
   const [isLoading, setIsLoading] = useState(false);
-  const [cosmicData, setCosmicData] = useState(null);
+  const [cosmicData, setCosmicData] = useState({
+    moonPhase: 'Loading...',
+    currentSign: 'Loading...'
+  });
   const [cycleData, setCycleData] = useState({ day: 14, phase: 'ovulatory' });
-  const [databases, setDatabases] = useState([]);
+  const [databases, setDatabases] = useState([
+    { id: 1, name: 'Goals', type: 'goals', itemCount: 5, created: new Date().toISOString() },
+    { id: 2, name: 'Garden', type: 'garden', itemCount: 0, created: new Date().toISOString() }
+  ]);
   const [showChat, setShowChat] = useState(false);
   
   const textareaRef = useRef(null);
@@ -66,14 +72,12 @@ export default function BrainDump() {
       if (response.ok) {
         const cosmic = await response.json();
         setCosmicData(cosmic);
+        console.log('Loaded cosmic data:', cosmic);
+      } else {
+        console.error('Failed to load cosmic data');
       }
     } catch (error) {
       console.error('Error loading cosmic data:', error);
-      // Set fallback data
-      setCosmicData({
-        moonPhase: 'Loading...',
-        currentSign: 'Loading...'
-      });
     }
   };
 
@@ -83,6 +87,9 @@ export default function BrainDump() {
       if (response.ok) {
         const data = await response.json();
         setCycleData(data);
+        console.log('Loaded cycle data:', data);
+      } else {
+        console.error('Failed to load cycle data');
       }
     } catch (error) {
       console.error('Error loading cycle data:', error);
@@ -95,6 +102,9 @@ export default function BrainDump() {
       if (response.ok) {
         const data = await response.json();
         setDatabases(data.databases || []);
+        console.log('Loaded databases:', data.databases);
+      } else {
+        console.error('Failed to load databases');
       }
     } catch (error) {
       console.error('Error loading databases:', error);
@@ -158,6 +168,8 @@ export default function BrainDump() {
     setShowChat(true);
 
     try {
+      console.log('Sending chat message:', userMessage.content);
+      
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -174,6 +186,7 @@ export default function BrainDump() {
       });
 
       const data = await response.json();
+      console.log('Chat response:', data);
       
       if (response.ok) {
         const aiMessage = { 
@@ -185,9 +198,9 @@ export default function BrainDump() {
         
         setChatHistory([...newHistory, aiMessage]);
         
-        // Process any actions
-        if (data.actions) {
-          await processActions(data.actions);
+        // Process any actions and update state immediately
+        if (data.actions && data.actions.length > 0) {
+          await processActionsAndUpdateState(data.actions);
         }
       } else {
         throw new Error(data.error || 'Chat failed');
@@ -196,7 +209,7 @@ export default function BrainDump() {
       console.error('Error in chat:', error);
       const errorMessage = { 
         role: 'assistant', 
-        content: "I'm having some trouble right now, but I'm still here with you. Try asking again in a moment!",
+        content: "I'm having some trouble connecting right now, but I'm still here with you. Try asking again in a moment!",
         timestamp: new Date().toISOString() 
       };
       setChatHistory([...newHistory, errorMessage]);
@@ -205,64 +218,82 @@ export default function BrainDump() {
     }
   };
 
-  const processActions = async (actions) => {
+  const processActionsAndUpdateState = async (actions) => {
+    console.log('Processing actions:', actions);
+    
     for (const action of actions) {
       switch (action.type) {
         case 'update_cycle':
-          await updateCycleDay(action.value);
+          console.log('Updating cycle to day:', action.value);
+          const newCycleData = {
+            day: action.value,
+            phase: calculateCyclePhase(action.value),
+            updated: new Date().toISOString()
+          };
+          setCycleData(newCycleData);
+          
+          // Also try to update via API
+          try {
+            await fetch('/api/cycle', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ cycleDay: action.value })
+            });
+          } catch (error) {
+            console.error('Error updating cycle via API:', error);
+          }
           break;
+          
         case 'create_database':
-          await createDatabase(action.name);
+          console.log('Creating database:', action.name);
+          const newDatabase = {
+            id: Date.now(),
+            name: action.name.charAt(0).toUpperCase() + action.name.slice(1),
+            type: action.name.toLowerCase(),
+            itemCount: 0,
+            created: new Date().toISOString()
+          };
+          setDatabases(prevDatabases => [...prevDatabases, newDatabase]);
+          
+          // Also try to create via API
+          try {
+            await fetch('/api/databases', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                name: newDatabase.name,
+                type: newDatabase.type
+              })
+            });
+          } catch (error) {
+            console.error('Error creating database via API:', error);
+          }
           break;
       }
     }
   };
 
-  const updateCycleDay = async (day) => {
-    try {
-      const response = await fetch('/api/cycle', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cycleDay: day })
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setCycleData(data);
-      }
-    } catch (error) {
-      console.error('Error updating cycle:', error);
-    }
-  };
-
-  const createDatabase = async (name) => {
-    try {
-      const response = await fetch('/api/databases', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          name: name.charAt(0).toUpperCase() + name.slice(1),
-          type: name.toLowerCase()
-        })
-      });
-      
-      const data = await response.json();
-      if (data.success) {
-        loadDatabases(); // Refresh databases list
-      }
-    } catch (error) {
-      console.error('Error creating database:', error);
-    }
+  const calculateCyclePhase = (day) => {
+    if (day <= 5) return 'menstrual';
+    if (day <= 13) return 'follicular';
+    if (day <= 16) return 'ovulatory';
+    return 'luteal';
   };
 
   const startChatForDump = (dump) => {
     setActiveChatId(dump.id);
-    const initialChat = [
-      { role: 'user', content: dump.content, timestamp: dump.created_at },
-      { role: 'assistant', content: "I've captured this thought! What would you like to explore about it?", timestamp: new Date().toISOString() }
-    ];
-    setChatHistory(initialChat);
-    setChatSessions({ ...chatSessions, [dump.id]: initialChat });
+    
+    // Check if we have existing chat for this dump
+    if (chatSessions[dump.id]) {
+      setChatHistory(chatSessions[dump.id]);
+    } else {
+      const initialChat = [
+        { role: 'user', content: dump.content, timestamp: dump.created_at },
+        { role: 'assistant', content: "I've captured this thought! What would you like to explore about it? I can help categorize it, break it into actionable steps, or connect it to your other goals and patterns.", timestamp: new Date().toISOString() }
+      ];
+      setChatHistory(initialChat);
+      setChatSessions({ ...chatSessions, [dump.id]: initialChat });
+    }
     setShowChat(true);
   };
 
@@ -342,30 +373,28 @@ export default function BrainDump() {
         </div>
 
         {/* Cosmic Context */}
-        {cosmicData && (
-          <div className="bg-white/10 backdrop-blur-lg rounded-xl p-4 mb-6 border border-white/20">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center text-sm">
-              <div>
-                <p className="text-gray-400">Moon Phase</p>
-                <p className="font-medium">{cosmicData.moonPhase}</p>
-              </div>
-              <div>
-                <p className="text-gray-400">Current Sign</p>
-                <p className="font-medium">{cosmicData.currentSign}</p>
-              </div>
-              <div>
-                <p className="text-gray-400">Cycle Day</p>
-                <p className="font-medium">Day {cycleData.day}</p>
-              </div>
-              <div>
-                <p className="text-gray-400">Cycle Phase</p>
-                <p className={`font-medium px-2 py-1 rounded-full text-xs ${getCyclePhaseColor(cycleData.phase)}`}>
-                  {cycleData.phase}
-                </p>
-              </div>
+        <div className="bg-white/10 backdrop-blur-lg rounded-xl p-4 mb-6 border border-white/20">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center text-sm">
+            <div>
+              <p className="text-gray-400">Moon Phase</p>
+              <p className="font-medium">{cosmicData.moonPhase}</p>
+            </div>
+            <div>
+              <p className="text-gray-400">Current Sign</p>
+              <p className="font-medium">{cosmicData.currentSign}</p>
+            </div>
+            <div>
+              <p className="text-gray-400">Cycle Day</p>
+              <p className="font-medium">Day {cycleData.day}</p>
+            </div>
+            <div>
+              <p className="text-gray-400">Cycle Phase</p>
+              <p className={`font-medium px-2 py-1 rounded-full text-xs ${getCyclePhaseColor(cycleData.phase)}`}>
+                {cycleData.phase}
+              </p>
             </div>
           </div>
-        )}
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           
@@ -517,7 +546,7 @@ export default function BrainDump() {
             <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
               <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                 <Database className="w-5 h-5" />
-                Your Databases
+                Your Databases ({databases.length})
               </h3>
               
               <div className="space-y-2">
@@ -533,7 +562,13 @@ export default function BrainDump() {
                   </div>
                 ))}
                 
-                <button className="w-full flex items-center justify-center gap-2 p-3 border-2 border-dashed border-gray-600 hover:border-gray-500 rounded-lg transition-all duration-200">
+                <button 
+                  onClick={() => {
+                    setDumpText('create a new database');
+                    handleSubmit(true);
+                  }}
+                  className="w-full flex items-center justify-center gap-2 p-3 border-2 border-dashed border-gray-600 hover:border-gray-500 rounded-lg transition-all duration-200"
+                >
                   <Plus className="w-4 h-4" />
                   Ask AI to create a new database
                 </button>
