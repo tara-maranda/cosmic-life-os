@@ -10,21 +10,18 @@ import { supabase } from '../lib/supabase';
 export default function BrainDump() {
   // State management
   const [dumpText, setDumpText] = useState('');
+  const [chatText, setChatText] = useState(''); // Separate input for chat
   const [dumps, setDumps] = useState([]);
   const [chatHistory, setChatHistory] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
   const [chatSessions, setChatSessions] = useState({});
-  const [currentChatType, setCurrentChatType] = useState('general');
   const [isLoading, setIsLoading] = useState(false);
   const [cosmicData, setCosmicData] = useState({
     moonPhase: 'Loading...',
     currentSign: 'Loading...'
   });
   const [cycleData, setCycleData] = useState({ day: 14, phase: 'ovulatory' });
-  const [databases, setDatabases] = useState([
-    { id: 1, name: 'Goals', type: 'goals', itemCount: 5, created: new Date().toISOString() },
-    { id: 2, name: 'Garden', type: 'garden', itemCount: 0, created: new Date().toISOString() }
-  ]);
+  const [databases, setDatabases] = useState([]);
   const [showChat, setShowChat] = useState(false);
   
   const textareaRef = useRef(null);
@@ -72,9 +69,6 @@ export default function BrainDump() {
       if (response.ok) {
         const cosmic = await response.json();
         setCosmicData(cosmic);
-        console.log('Loaded cosmic data:', cosmic);
-      } else {
-        console.error('Failed to load cosmic data');
       }
     } catch (error) {
       console.error('Error loading cosmic data:', error);
@@ -87,9 +81,6 @@ export default function BrainDump() {
       if (response.ok) {
         const data = await response.json();
         setCycleData(data);
-        console.log('Loaded cycle data:', data);
-      } else {
-        console.error('Failed to load cycle data');
       }
     } catch (error) {
       console.error('Error loading cycle data:', error);
@@ -98,39 +89,44 @@ export default function BrainDump() {
 
   const loadDatabases = async () => {
     try {
+      // First try to load from API
       const response = await fetch('/api/databases');
       if (response.ok) {
         const data = await response.json();
         setDatabases(data.databases || []);
-        console.log('Loaded databases:', data.databases);
       } else {
-        console.error('Failed to load databases');
+        // Fallback to localStorage for persistence
+        const saved = localStorage.getItem('cosmic-databases');
+        if (saved) {
+          setDatabases(JSON.parse(saved));
+        } else {
+          // Default databases
+          const defaultDbs = [
+            { id: 1, name: 'Goals', type: 'goals', itemCount: 5, created: new Date().toISOString() },
+            { id: 2, name: 'Garden', type: 'garden', itemCount: 0, created: new Date().toISOString() }
+          ];
+          setDatabases(defaultDbs);
+          localStorage.setItem('cosmic-databases', JSON.stringify(defaultDbs));
+        }
       }
     } catch (error) {
       console.error('Error loading databases:', error);
+      // Load from localStorage as fallback
+      const saved = localStorage.getItem('cosmic-databases');
+      if (saved) {
+        setDatabases(JSON.parse(saved));
+      }
     }
   };
 
-  const handleSubmit = async (isChat = false) => {
+  const saveDatabasesLocally = (newDatabases) => {
+    localStorage.setItem('cosmic-databases', JSON.stringify(newDatabases));
+  };
+
+  const handleCapture = async () => {
     if (!dumpText.trim()) return;
 
     setIsLoading(true);
-    
-    if (isChat) {
-      await sendChatMessage();
-    } else {
-      await saveBrainDump();
-    }
-  };
-
-  const handleKeyPress = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit(false);
-    }
-  };
-
-  const saveBrainDump = async () => {
     const category = categorizeDump(dumpText);
     
     try {
@@ -160,33 +156,41 @@ export default function BrainDump() {
     }
   };
 
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleCapture();
+    }
+  };
+
   const sendChatMessage = async () => {
-    const userMessage = { role: 'user', content: dumpText, timestamp: new Date().toISOString() };
+    if (!chatText.trim()) return;
+
+    const userMessage = { role: 'user', content: chatText, timestamp: new Date().toISOString() };
     const newHistory = [...chatHistory, userMessage];
     setChatHistory(newHistory);
-    setDumpText('');
-    setShowChat(true);
+    
+    // Save to session immediately
+    if (activeChatId) {
+      setChatSessions({ ...chatSessions, [activeChatId]: newHistory });
+    }
+    
+    setChatText(''); // Clear chat input
+    setIsLoading(true);
 
     try {
-      console.log('Sending chat message:', userMessage.content);
-      
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: userMessage.content,
-          chatType: currentChatType,
+          chatType: 'general',
           chatHistory: newHistory,
-          userContext: {
-            cosmicData,
-            cycleData,
-            recentDumps: dumps.slice(0, 3)
-          }
+          userContext: { cosmicData, cycleData, recentDumps: dumps.slice(0, 3) }
         })
       });
 
       const data = await response.json();
-      console.log('Chat response:', data);
       
       if (response.ok) {
         const aiMessage = { 
@@ -196,9 +200,15 @@ export default function BrainDump() {
           actions: data.actions || []
         };
         
-        setChatHistory([...newHistory, aiMessage]);
+        const finalHistory = [...newHistory, aiMessage];
+        setChatHistory(finalHistory);
         
-        // Process any actions and update state immediately
+        // Save to session
+        if (activeChatId) {
+          setChatSessions({ ...chatSessions, [activeChatId]: finalHistory });
+        }
+        
+        // Process actions and update state immediately
         if (data.actions && data.actions.length > 0) {
           await processActionsAndUpdateState(data.actions);
         }
@@ -212,19 +222,21 @@ export default function BrainDump() {
         content: "I'm having some trouble connecting right now, but I'm still here with you. Try asking again in a moment!",
         timestamp: new Date().toISOString() 
       };
-      setChatHistory([...newHistory, errorMessage]);
+      const finalHistory = [...newHistory, errorMessage];
+      setChatHistory(finalHistory);
+      
+      if (activeChatId) {
+        setChatSessions({ ...chatSessions, [activeChatId]: finalHistory });
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
   const processActionsAndUpdateState = async (actions) => {
-    console.log('Processing actions:', actions);
-    
     for (const action of actions) {
       switch (action.type) {
         case 'update_cycle':
-          console.log('Updating cycle to day:', action.value);
           const newCycleData = {
             day: action.value,
             phase: calculateCyclePhase(action.value),
@@ -232,20 +244,11 @@ export default function BrainDump() {
           };
           setCycleData(newCycleData);
           
-          // Also try to update via API
-          try {
-            await fetch('/api/cycle', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ cycleDay: action.value })
-            });
-          } catch (error) {
-            console.error('Error updating cycle via API:', error);
-          }
+          // Save to localStorage for persistence
+          localStorage.setItem('cosmic-cycle', JSON.stringify(newCycleData));
           break;
           
         case 'create_database':
-          console.log('Creating database:', action.name);
           const newDatabase = {
             id: Date.now(),
             name: action.name.charAt(0).toUpperCase() + action.name.slice(1),
@@ -253,21 +256,9 @@ export default function BrainDump() {
             itemCount: 0,
             created: new Date().toISOString()
           };
-          setDatabases(prevDatabases => [...prevDatabases, newDatabase]);
-          
-          // Also try to create via API
-          try {
-            await fetch('/api/databases', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ 
-                name: newDatabase.name,
-                type: newDatabase.type
-              })
-            });
-          } catch (error) {
-            console.error('Error creating database via API:', error);
-          }
+          const updatedDatabases = [...databases, newDatabase];
+          setDatabases(updatedDatabases);
+          saveDatabasesLocally(updatedDatabases);
           break;
       }
     }
@@ -282,6 +273,7 @@ export default function BrainDump() {
 
   const startChatForDump = (dump) => {
     setActiveChatId(dump.id);
+    setShowChat(true);
     
     // Check if we have existing chat for this dump
     if (chatSessions[dump.id]) {
@@ -294,7 +286,20 @@ export default function BrainDump() {
       setChatHistory(initialChat);
       setChatSessions({ ...chatSessions, [dump.id]: initialChat });
     }
+  };
+
+  const startNewChat = () => {
+    if (!dumpText.trim()) return;
+    
+    setActiveChatId('new');
     setShowChat(true);
+    
+    const initialChat = [
+      { role: 'user', content: dumpText, timestamp: new Date().toISOString() }
+    ];
+    setChatHistory(initialChat);
+    setChatText(dumpText); // Pre-fill chat input
+    setDumpText(''); // Clear main input
   };
 
   const categorizeDump = (text) => {
@@ -347,6 +352,14 @@ export default function BrainDump() {
     };
     return colors[phase] || 'bg-gray-500/20 text-gray-300';
   };
+
+  // Load cycle data from localStorage on component mount
+  useEffect(() => {
+    const savedCycle = localStorage.getItem('cosmic-cycle');
+    if (savedCycle) {
+      setCycleData(JSON.parse(savedCycle));
+    }
+  }, []);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 text-white">
@@ -432,7 +445,7 @@ export default function BrainDump() {
                 
                 <div className="flex gap-2">
                   <button
-                    onClick={() => handleSubmit(true)}
+                    onClick={startNewChat}
                     disabled={!dumpText.trim() || isLoading}
                     className="flex items-center gap-2 px-4 py-2 bg-blue-500/50 hover:bg-blue-500/70 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-all duration-200"
                   >
@@ -440,7 +453,7 @@ export default function BrainDump() {
                     Chat
                   </button>
                   <button
-                    onClick={() => handleSubmit(false)}
+                    onClick={handleCapture}
                     disabled={!dumpText.trim() || isLoading}
                     className="flex items-center gap-2 px-6 py-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-all duration-200"
                   >
@@ -484,6 +497,13 @@ export default function BrainDump() {
                       </div>
                       
                       <p className="text-gray-300 text-sm">{dump.content}</p>
+                      
+                      {/* Show if there's a chat session */}
+                      {chatSessions[dump.id] && (
+                        <p className="text-xs text-purple-400 mt-1">
+                          💬 {chatSessions[dump.id].length} messages
+                        </p>
+                      )}
                     </div>
                   );
                 })}
@@ -497,10 +517,18 @@ export default function BrainDump() {
             {/* Chat Area */}
             {showChat && (
               <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
-                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                  <MessageCircle className="w-5 h-5" />
-                  AI Conversation
-                </h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold flex items-center gap-2">
+                    <MessageCircle className="w-5 h-5" />
+                    AI Conversation
+                  </h3>
+                  <button 
+                    onClick={() => setShowChat(false)}
+                    className="text-gray-400 hover:text-white"
+                  >
+                    ✕
+                  </button>
+                </div>
                 
                 <div className="space-y-4 max-h-96 overflow-y-auto mb-4">
                   {chatHistory.map((message, index) => (
@@ -518,6 +546,15 @@ export default function BrainDump() {
                       <p className="text-gray-100">{message.content}</p>
                     </div>
                   ))}
+                  {isLoading && (
+                    <div className="bg-purple-500/20 mr-4 p-3 rounded-lg">
+                      <p className="text-sm text-gray-400 mb-1">AI Assistant</p>
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                        <span className="text-gray-300">Thinking...</span>
+                      </div>
+                    </div>
+                  )}
                   <div ref={chatEndRef} />
                 </div>
                 
@@ -525,15 +562,15 @@ export default function BrainDump() {
                 <div className="flex gap-2">
                   <input
                     type="text"
-                    value={dumpText}
-                    onChange={(e) => setDumpText(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleSubmit(true)}
+                    value={chatText}
+                    onChange={(e) => setChatText(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && sendChatMessage()}
                     placeholder="Continue the conversation..."
                     className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400"
                   />
                   <button
-                    onClick={() => handleSubmit(true)}
-                    disabled={!dumpText.trim() || isLoading}
+                    onClick={sendChatMessage}
+                    disabled={!chatText.trim() || isLoading}
                     className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 disabled:opacity-50 py-2 px-4 rounded-lg transition-all duration-200"
                   >
                     <Send className="w-4 h-4" />
@@ -551,10 +588,10 @@ export default function BrainDump() {
               
               <div className="space-y-2">
                 {databases.map((db) => (
-                  <div key={db.id} className="flex items-center justify-between bg-white/5 rounded-lg p-3">
+                  <div key={db.id} className="flex items-center justify-between bg-white/5 rounded-lg p-3 hover:bg-white/10 transition-all cursor-pointer">
                     <div>
                       <p className="font-medium">{db.name}</p>
-                      <p className="text-sm text-gray-400">{db.itemCount} items</p>
+                      <p className="text-sm text-gray-400">{db.itemCount} items • {db.type}</p>
                     </div>
                     <button className="text-purple-400 hover:text-purple-300">
                       <ArrowRight className="w-4 h-4" />
@@ -562,16 +599,9 @@ export default function BrainDump() {
                   </div>
                 ))}
                 
-                <button 
-                  onClick={() => {
-                    setDumpText('create a new database');
-                    handleSubmit(true);
-                  }}
-                  className="w-full flex items-center justify-center gap-2 p-3 border-2 border-dashed border-gray-600 hover:border-gray-500 rounded-lg transition-all duration-200"
-                >
-                  <Plus className="w-4 h-4" />
-                  Ask AI to create a new database
-                </button>
+                <div className="text-center py-2">
+                  <p className="text-sm text-gray-400">💬 Chat with AI to create new databases</p>
+                </div>
               </div>
             </div>
           </div>
